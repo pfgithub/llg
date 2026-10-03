@@ -9,12 +9,15 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<div class="hud">
+<div class="hud" hidden>
+  <button class="mark-btn" id="btnPause"></button>
   <button class="mark-btn" id="btnLog"></button>
   <button class="mark-btn" id="btnDict"></button>
 </div>
 <div id="panel" hidden></div>
 <div id="end" hidden></div>
+<div id="pause" hidden></div>
+<div id="title" hidden></div>
 <script src="js/glyphs.js"></script>
 <script src="js/world.js"></script>
 <script src="js/panels.js"></script>

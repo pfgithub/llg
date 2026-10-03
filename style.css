@@ -58,3 +58,13 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; padding: 
 @keyframes fadein { from { opacity: 0; } }
 .endwords { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; max-width: 340px; color: var(--paper); }
 .endword { width: 56px; height: 56px; animation: fadein .8s; }
+
+/* title screen and pause menu */
+#title, #pause { position: fixed; inset: 0; z-index: 15; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 48px; }
+#title { background: linear-gradient(rgba(18,17,22,.25), rgba(18,17,22,.75)); }
+.titlename { display: flex; gap: 6px; color: var(--paper); filter: drop-shadow(0 3px 0 rgba(0,0,0,.5)); }
+.titlename .mark { width: min(30vw, 130px); height: min(30vw, 130px); stroke-width: 8; }
+.titlebtns, .pausebtns { display: flex; gap: 18px; align-items: center; }
+.mark-btn.big { width: 72px; height: 72px; padding: 16px; }
+.mark-btn.primary { width: 92px; height: 92px; padding: 20px; background: #e8b931; }
+.confirm { width: 56px; height: 56px; color: var(--paper); }

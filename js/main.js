@@ -6,7 +6,14 @@
 const SAVE_KEY = 'llg-city-v1';
 function loadSave() { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || null; } catch (e) { return null; } }
 function writeSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* storage unavailable */ } }
-const S = Object.assign({ seen: [], log: [], introDone: false, px: 0, py: 0 }, loadSave() || {});
+const DEFAULTS = () => ({ seen: [], log: [], introDone: false, px: 0, py: 0 });
+const S = Object.assign(DEFAULTS(), loadSave() || {});
+const SETTINGS_KEY = 'llg-city-settings';
+const settings = Object.assign({ sound: true }, (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)); } catch (e) { return null; } })() || {});
+function writeSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* storage unavailable */ } }
+
+// title: the world runs behind the title screen; play: you are in it; paused: frozen.
+let mode = 'title';
 
 // ===========================================================================
 // Sound: each word has its own pitch, so speech has a voice.
@@ -18,7 +25,7 @@ function audio() {
   return AC;
 }
 function tone(f, dur, vol, when = 0, type = 'triangle') {
-  const a = AC; if (!a || a.state !== 'running') return;
+  const a = AC; if (!a || a.state !== 'running' || !settings.sound) return;
   const t = a.currentTime + when;
   const o = a.createOscillator(), gn = a.createGain();
   o.type = type; o.frequency.value = f;
@@ -86,7 +93,7 @@ function onScreen(a) {
 function say(a, glyphs, dur = 2.8) {
   if (!actors.includes(a) && a !== player) return;
   a.bubble = { g: glyphs, until: clock + dur };
-  if (onScreen(a)) {
+  if (mode === 'play' && onScreen(a)) {
     const d = Math.hypot(a.x - player.x, a.y - player.y) / T;
     voice(a, glyphs, Math.max(0.015, 0.08 - d * 0.008));
     remember(a, glyphs);
@@ -514,7 +521,7 @@ canvas.addEventListener('pointerup', endStick);
 canvas.addEventListener('pointercancel', endStick);
 // keyboard, for desktop
 const keys = {};
-window.addEventListener('keydown', (e) => { keys[e.key] = true; audio(); });
+window.addEventListener('keydown', (e) => { keys[e.key] = true; audio(); if (e.key === 'Escape') pauseGame(); });
 window.addEventListener('keyup', (e) => { keys[e.key] = false; });
 
 // ===========================================================================
@@ -607,18 +614,28 @@ function showEnd() {
 // ===========================================================================
 // Main loop
 // ===========================================================================
-let last = performance.now(), saveTimer = 0;
+let last = performance.now(), saveTimer = 0, fadeFrom = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  const frozen = mode === 'paused' || !$('#panel').hidden;
+  if (!frozen) update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+
+function update(dt) {
   clock += dt;
   for (let i = timers.length - 1; i >= 0; i--) if (timers[i].at <= clock) { const t = timers.splice(i, 1)[0]; t.fn(); }
 
+  const playing = mode === 'play';
   for (const tr of trains) updateTrain(tr, dt);
   updateTram(dt);
   cityTick(dt);
-  if (!intro) rideTick();
-  if (intro) introTick(); else if (!riding) movePlayer(dt);
+  if (playing) {
+    if (!intro) rideTick();
+    if (intro) introTick(); else if (!riding) movePlayer(dt);
+  }
   for (const a of actors) {
     runTasks(a, dt);
     if (a.bubble && a.bubble.until < clock) a.bubble = null;
@@ -627,26 +644,28 @@ function frame(now) {
   if (player.bubble && player.bubble.until < clock) player.bubble = null;
   residentsTick();
   gatesTick(dt);
-  machineTick();
+  if (playing) machineTick();
 
   // camera
   view.w = W; view.h = H; view.scale = viewScale(W);
-  const target = intro ? { x: 8 * T, y: trains[0].y + 10 * T } : riding ? { x: tram.x + tram.len / 2, y: TRAM_Y + 2 * T } : player;
+  let target;
+  if (!playing) target = { x: 8 * T, y: 20 * T + Math.sin(clock * 0.07) * 9 * T };
+  else if (intro) target = { x: 8 * T, y: trains[0].y + 10 * T };
+  else if (riding) target = { x: tram.x + tram.len / 2, y: TRAM_Y + 2 * T };
+  else target = player;
   const halfW = W / 2 / view.scale, halfH = H / 2 / view.scale;
   let tx = MAP_W * T > halfW * 2 ? Math.max(halfW, Math.min(MAP_W * T - halfW, target.x)) : MAP_W * T / 2;
   let ty = Math.max(TOP * T + halfH, Math.min(MAP_H * T - halfH + T, target.y));
-  view.cx += (tx - view.cx) * Math.min(1, dt * 4);
-  view.cy += (ty - view.cy) * Math.min(1, dt * 4);
+  const k = playing ? 4 : 0.6;
+  view.cx += (tx - view.cx) * Math.min(1, dt * k);
+  view.cy += (ty - view.cy) * Math.min(1, dt * k);
 
   saveTimer += dt;
-  if (saveTimer > 3 && !intro) { saveTimer = 0; S.px = player.x; S.py = player.y; writeSave(); }
-
-  draw();
-  requestAnimationFrame(frame);
+  if (playing && saveTimer > 3 && !intro && !riding) { saveTimer = 0; S.px = player.x; S.py = player.y; writeSave(); }
 }
 
 function liveState() {
-  const people = intro ? actors : [player, ...actors];
+  const people = intro || mode === 'title' ? actors : [player, ...actors];
   return {
     t: clock, trains: trains.concat([tram]), actors: people, gatesOpen: gates.map((gt) => gt.open > 0),
     bubbles: people.filter((a) => a.bubble).map((a) => ({ actorId: a.id, g: a.bubble.g })),
@@ -662,21 +681,108 @@ function draw() {
     ctx.fillStyle = 'rgba(255,255,255,.5)';
     ctx.beginPath(); ctx.arc(stick.ox + stick.dx, stick.oy + stick.dy, 20, 0, Math.PI * 2); ctx.fill();
   }
-  if (clock < 1.5) { ctx.fillStyle = `rgba(0,0,0,${1 - clock / 1.5})`; ctx.fillRect(0, 0, W, H); }
+  const f = (clock - fadeFrom) / 1.5;
+  if (f < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - Math.max(0, f)})`; ctx.fillRect(0, 0, W, H); }
+  if (mode === 'paused') { ctx.fillStyle = 'rgba(15,14,18,.55)'; ctx.fillRect(0, 0, W, H); }
 }
 
 // ===========================================================================
 // Boot
 // ===========================================================================
-resize();
-if (S.introDone) {
-  player.out = true;
-  player.x = S.px || 6 * T; player.y = S.py || 22 * T;
-  view.cx = player.x; view.cy = player.y;
-  trains[0].timer = 3; trains[1].timer = 10;
-} else {
-  startIntro();
-  view.cy = MAP_H * T - 6 * T;
+// ===========================================================================
+// Title screen and pause menu. Everything on them is written in the script.
+// ===========================================================================
+const markBtn = (id, cls = '') => `<button class="mark-btn big ${cls}" data-m="${id}">${glyphSVG(id, 'mark')}</button>`;
+
+// Clear out everyone passing through, and put the trains back at the start.
+function resetWorld() {
+  timers.length = 0;
+  for (let i = actors.length - 1; i >= 0; i--) {
+    const r = actors[i].role;
+    if (r === 'traveller' || r === 'conductor' || r === 'driver') actors.splice(i, 1);
+  }
+  for (const a of actors) { a.bubble = null; if (a.role !== 'walker') a.tasks = []; }
+  for (const tr of trains) Object.assign(tr, { state: 'away', visible: false, open: 0, events: {}, y: MAP_H * T + 40 });
+  trains[0].timer = 4; trains[1].timer = 12;
+  Object.assign(tram, { state: 'away', visible: false, open: 0, timer: 8, x: -8 * T });
+  for (const gt of gates) gt.open = 0;
+  guard.busy = null;
+  riding = false;
+  player.holding = null; player.bubble = null; player.moving = false;
 }
+
+function showTitle() {
+  mode = 'title';
+  player.hidden = true;
+  $('.hud').hidden = true;
+  $('#pause').hidden = true; $('#pause').innerHTML = '';
+  const t = $('#title');
+  t.hidden = false;
+  t.innerHTML = `<div class="titlename">${glyphSVG('name1', 'mark')}${glyphSVG('name2', 'mark')}</div>
+    <div class="titlebtns">${markBtn('play', 'primary')}${S.introDone ? markBtn('fresh') : ''}</div>`;
+  t.querySelector('[data-m="play"]').onclick = () => { audio(); startPlay(false); };
+  const fresh = t.querySelector('[data-m="fresh"]');
+  if (fresh) fresh.onclick = () => {
+    audio();
+    // Ask again before throwing a game away: the same mark, then go or back.
+    t.querySelector('.titlebtns').innerHTML = `<div class="confirm">${glyphSVG('fresh', 'mark')}</div>${markBtn('play', 'primary')}${markBtn('close')}`;
+    t.querySelector('[data-m="play"]').onclick = () => startPlay(true);
+    t.querySelector('[data-m="close"]').onclick = showTitle;
+  };
+}
+
+function startPlay(fresh) {
+  if (fresh) {
+    for (const k of Object.keys(S)) delete S[k];
+    Object.assign(S, DEFAULTS());
+    writeSave();
+  }
+  $('#title').hidden = true; $('#title').innerHTML = '';
+  $('.hud').hidden = false;
+  resetWorld();
+  fadeFrom = clock;
+  player.hidden = false;
+  if (!S.introDone) {
+    intro = true; player.out = false;
+    startIntro();
+    view.cy = MAP_H * T - 6 * T;
+  } else {
+    intro = false; player.out = true;
+    player.x = S.px || 6 * T; player.y = S.py || 22 * T;
+    view.cx = player.x; view.cy = player.y;
+  }
+  mode = 'play';
+}
+
+function pauseGame() {
+  if (mode !== 'play') return;
+  mode = 'paused';
+  stick.on = false; stick.dx = stick.dy = 0;
+  const p = $('#pause');
+  p.hidden = false;
+  p.innerHTML = `<div class="pausebtns">${markBtn('play', 'primary')}${markBtn(settings.sound ? 'sound' : 'mute')}${markBtn('home')}</div>`;
+  p.querySelector('[data-m="play"]').onclick = () => { p.hidden = true; p.innerHTML = ''; mode = 'play'; last = performance.now(); };
+  p.querySelector('[data-m="sound"], [data-m="mute"]').onclick = () => {
+    settings.sound = !settings.sound; writeSettings();
+    mode = 'play';
+    pauseGame();
+  };
+  p.querySelector('[data-m="home"]').onclick = () => {
+    if (!intro && !riding) { S.px = player.x; S.py = player.y; }
+    writeSave();
+    showTitle();
+  };
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
+
+// ===========================================================================
+// Boot
+// ===========================================================================
+resize();
+view.cy = 20 * T;
+trains[0].timer = 2; trains[1].timer = 9;
 initPanels();
+$('#btnPause').innerHTML = glyphSVG('pause', 'mark');
+$('#btnPause').onclick = pauseGame;
+showTitle();
 requestAnimationFrame(frame);

@@ -68,6 +68,7 @@ const SIGNS = [
   { x: 12.4, y: 10.75, g: ['ticket'], small: true },
   { x: 8, y: 8.9, g: ['train', 'big'] },
   { x: 8, y: 1.6, g: ['train', 'small'] },
+  { x: 8, y: 4.6, g: ['name1', 'name2'], name: true },
   { x: 8, y: -10.7, g: ['train', 'small'] },
 ];
 
@@ -245,7 +246,7 @@ function drawSign(g, s) {
   const n = s.g.length, size = s.small ? 13 : 18, pad = s.small ? 3 : 4;
   const w = n * size + (n - 1) * 3 + pad * 2, h = size + pad * 2;
   const x = s.x * T - w / 2, y = s.y * T - h / 2;
-  g.fillStyle = '#2b4f7a';
+  g.fillStyle = s.name ? '#7a2b3a' : '#2b4f7a';
   roundRect(g, x, y, w, h, 3); g.fill();
   s.g.forEach((id, i) => drawGlyph(g, id, x + pad + size / 2 + i * (size + 3), y + h / 2, size, '#f4efe4'));
 }

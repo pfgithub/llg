@@ -10,7 +10,12 @@ Open `index.html` in a browser. There is no build step.
 
 Touch anywhere and drag to walk. Arrow keys or WASD also work on a computer.
 
-The two round buttons in the corner open:
+The game opens on a title screen showing the city's name, with the station running behind it. The big
+button starts or continues; when you have a saved game, the second button starts over (it asks again first).
+
+The round buttons in the corner open:
+
+- the **pause menu**: resume, sound on/off, back to the title
 
 - the **log**: every phrase you have seen, each with a picture of the moment you saw it
 - the **dictionary**: every word you have seen; pick one to see each phrase it appeared in,
