@@ -127,3 +127,16 @@ function bakerySVG() {
     <rect x="66" y="52" width="14" height="12" fill="#fff0b0" stroke="#6b4a2a" stroke-width="2"/>
   </svg>`;
 }
+
+function fenceGateSVG(open) {
+  const fence = '<path d="M2 40 H98 M2 70 H98" stroke="#7a5230" stroke-width="5"/><path d="M6 30 V92 M94 30 V92" stroke="#5a3a1e" stroke-width="7" stroke-linecap="round"/>';
+  if (open) {
+    return `<svg viewBox="0 0 100 100" class="art">${fence.replace('M2 40 H98 M2 70 H98', 'M2 40 H10 M90 40 H98 M2 70 H10 M90 70 H98')}
+      <path d="M12 34 L30 26 V90 L12 94 Z" fill="#a0703f" stroke="#5a3a1e" stroke-width="3"/></svg>`;
+  }
+  return `<svg viewBox="0 0 100 100" class="art">${fence}
+    <path d="M14 34 H86 V90 H14 Z" fill="#a0703f" stroke="#5a3a1e" stroke-width="3"/>
+    <path d="M32 34 V90 M50 34 V90 M68 34 V90 M14 34 L86 90" stroke="#6b4422" stroke-width="3"/>
+    <rect x="43" y="52" width="14" height="13" rx="2" fill="#c9a23a" stroke="#2a1c10" stroke-width="2"/>
+    <path d="M46 52 V47 a4 4 0 0 1 8 0 V52" stroke="#2a1c10" stroke-width="2.4" fill="none"/></svg>`;
+}

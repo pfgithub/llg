@@ -21,7 +21,7 @@ The goal is to relight the great fire at the top of the tower.
 
 ## The language (spoilers)
 
-26 words, one glyph each. Verbs share a line underneath. Colours share a hook on top. Numbers share a bar on top.
+25 words, one glyph each. Verbs share a line underneath. Colours share a hook on top. Numbers share a bar on top.
 
 | Glyph id | Meaning | Glyph id | Meaning |
 |---|---|---|---|
@@ -31,30 +31,42 @@ The goal is to relight the great fire at the top of the tower.
 | want | want | big | big |
 | give | give | what | question marker |
 | go | go | not | not / no |
-| open | open | one, two | numbers |
-| fish | fish | door | door |
-| food | bread / food | key | key |
-| water | water | yes | yes |
-| tree | tree / forest | good | good / thanks |
-| house | house / village | | |
+| fish | fish | one, two | numbers |
+| food | bread / food | door | door |
+| water | water / the sea | key | key |
+| tree | tree / forest | yes | yes |
+| house | house / village | good | good / thanks |
 
 Grammar:
 
 - Subject, verb, object: `me want fish`.
 - Adjectives and numbers come after the noun: `flower yellow`, `food two`, `fire big` (the tower beacon).
 - `not` goes before the word it negates: `you not go`, `not fire big`.
-- `what` at the end makes a question: `you want fish what`.
+- `what` at the end makes a question: `you want what`.
+
+## Pacing
+
+The story is a chain, and each step brings in only a few new glyphs:
+
+| Step | New glyphs |
+|---|---|
+| Fisher on the shore | hello, fish, yes, not |
+| Baker | me, want, good, food (signs: house, water, tree, fire, big) |
+| Tower guard | you, go, one, two, what |
+| Hall of doors | door, red, yellow |
+| Keeper | give, key |
+| Forest | flower, blue |
 
 ## Walkthrough (spoilers)
 
-1. Shore: the fisher offers a fish. Answer *yes*.
-2. Village: the baker wants fish and gives bread. The tower guard wants **two** bread, so fetch a second fish.
-3. Take water from the well to the gardener in the forest. The flowers bloom.
-4. The crying child wants the **yellow** flower and gives you a key.
-5. Feed the guard two bread. When asked what you want, say something with *go* (e.g. `me go`).
-6. Hall: the sign says the red and yellow doors are *not good*. Take the blue door.
-7. Unlock the stairs door with the key. The keeper at the top says `me want fire`.
-8. Go back to the old woman by the campfire and ask for fire (e.g. `me want fire`). Bring it to the keeper.
+1. Shore: answer the fisher's greeting, then say *yes* to the fish.
+2. Village: give the fish to the baker for bread. The old woman is asleep and the forest gate is locked.
+3. Tower gate: the guard wants **two** bread, so fetch a second fish. When asked what you want, say something with *go* (e.g. `me go`).
+4. Hall: the sign says the red and yellow doors are *not good*. Take the blue door.
+5. The keeper at the top says `not fire big`, `me want fire`, and gives you a key.
+6. The old woman is awake now. Ask her for fire (e.g. `me want fire`). She wants a yellow flower.
+7. Unlock the forest gate. The gardener wants water from the well; then the flowers bloom.
+8. Give the yellow flower to the old woman, take her fire to the keeper.
 
 ## Code
 
@@ -62,3 +74,4 @@ Grammar:
 - `js/art.js`: SVG scenery and icons
 - `js/game.js`: engine, scenes, character scripts, journal, composer
 - `style.css`: layout, sized for portrait phones
+- `tools/bundle.py`: builds a single self-contained HTML file

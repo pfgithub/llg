@@ -3,7 +3,7 @@
 // ===========================================================================
 // State
 // ===========================================================================
-const SAVE_KEY = 'llg-save-v1';
+const SAVE_KEY = 'llg-save-v2';
 const SETTINGS_KEY = 'llg-settings-v1';
 
 function freshState() {
@@ -117,6 +117,7 @@ function checkPages() {
     journalDot = true;
     renderTopbar();
     setTimeout(sfx.page, 300);
+    setTimeout(renderPointer, 50);
   }
 }
 
@@ -159,14 +160,12 @@ const PLAYER = { e: '🧑', pitch: 300 };
 const N = {
   fisher: { e: '🧔', pitch: 150 },
   baker: { e: '🧑‍🍳', pitch: 260 },
-  child: { e: '🧒', pitch: 440 },
   elder: { e: '👵', pitch: 210 },
   gardener: { e: '🧑‍🌾', pitch: 240 },
   guard: { e: '💂', pitch: 120 },
   keeper: { e: '🧙', pitch: 170 },
   well: { art: wellSVG(), pitch: 330 },
   sign: { icon: ICONS.sign, pitch: 280 },
-  door: { art: doorSVG('#8a5a2b', { lock: true }), pitch: 140 },
 };
 function portraitHTML(who) {
   if (who.e) return `<span class="emoji">${who.e}</span>`;
@@ -202,7 +201,7 @@ function showLine(who, glyphs, options) {
         const box = layer.querySelector('.choices');
         options.forEach((opt, idx) => {
           const b = h(`<button class="choice">${opt.map((g) => glyphCell(g)).join('')}</button>`);
-          b.onclick = (e) => { e.stopPropagation(); sfx.tap(); layer.onclick = null; resolve(idx); };
+          b.onclick = (e) => { e.stopPropagation(); sfx.tap(); hideDialog(); resolve(idx); };
           box.appendChild(b);
         });
       } else dlg.classList.add('ready');
@@ -270,21 +269,42 @@ function compose(who, prompt) {
 }
 
 // ===========================================================================
-// Scripts for each character / object
+// Scripts for each character / object.
+// The story is a chain: each step brings in only a few new glyphs.
+//   shore:   hello fish yes not
+//   baker:   me want good food            (signs: house water tree fire big)
+//   guard:   you go one two what
+//   hall:    door red yellow
+//   keeper:  give key
+//   forest:  flower blue  ...then back to the old woman for fire.
 // ===========================================================================
 const fisher = {
   ...N.fisher,
   async talk() {
-    if (!flag('metFisher')) { set('metFisher'); await say(N.fisher, ['hello']); }
-    if (has('fish')) return say(N.fisher, ['fish', 'good']);
-    const c = await ask(N.fisher, ['you', 'want', 'fish', 'what'], [['yes'], ['not']]);
+    if (!flag('metFisher')) {
+      await say(N.fisher, ['hello']);
+      // The only possible answer: you learn that the buttons are your own voice.
+      await ask(PLAYER, [], [['hello']]);
+      set('metFisher');
+      renderScene();
+    }
+    if (has('fish')) return say(N.fisher, ['fish']);
+    if (!flag('fishShown')) {
+      set('fishShown');
+      renderScene();
+      sfx.splash();
+      await wait(500);
+    }
+    const c = await ask(N.fisher, ['fish'], [['yes'], ['not']]);
     if (c === 0) {
       await say(PLAYER, ['yes']);
       give('fish');
-      await say(N.fisher, ['me', 'give', 'fish']);
+      set('gotFish');
+      renderScene();
+      await say(N.fisher, ['fish']);
     } else {
       await say(PLAYER, ['not']);
-      await say(N.fisher, ['fish', 'good']);
+      await say(N.fisher, ['not', 'fish']);
     }
   },
 };
@@ -297,53 +317,52 @@ const baker = {
   },
   async receive(it) {
     if (it !== 'fish') return false;
+    if (!flag('metBaker')) await this.talk();
     take('fish');
     await say(N.baker, ['good']);
     give('food');
     set('bakerTraded');
-    await say(N.baker, ['me', 'give', 'food']);
-  },
-};
-
-const child = {
-  ...N.child,
-  async talk() {
-    if (flag('childDone')) return say(N.child, ['flower', 'yellow', 'good']);
-    await say(N.child, ['me', 'want', 'flower', 'yellow']);
-  },
-  async receive(it) {
-    if (!it.startsWith('flower') || flag('childDone')) return false;
-    if (it !== 'flower_yellow') {
-      sfx.nope();
-      await say(N.child, ['not']);
-      await say(N.child, ['me', 'want', 'flower', 'yellow']);
-      return;
-    }
-    take(it);
-    set('childDone');
-    renderScene();
-    await say(N.child, ['good']);
-    give('key');
-    await say(N.child, ['me', 'give', 'key']);
+    await say(N.baker, ['food']);
   },
 };
 
 const elder = {
   ...N.elder,
   async talk() {
+    if (!flag('metKeeper')) {
+      // Asleep until there is a reason to wake her.
+      wiggle('elder');
+      tone(90, 0.5, 'sine', 0.05); tone(70, 0.6, 'sine', 0.05, 0.5);
+      return;
+    }
     if (flag('gotTorch')) return say(N.elder, ['fire', 'good']);
+    if (flag('elderAsked')) return say(N.elder, ['me', 'want', 'flower', 'yellow']);
     if (!flag('metElder')) { set('metElder'); await say(N.elder, ['hello']); }
     const r = await compose(N.elder, ['you', 'want', 'what']);
     if (!r) return;
     await say(PLAYER, r);
     if (r.includes('fire') && !r.includes('not')) {
       await say(N.elder, ['good']);
-      give('torch');
-      set('gotTorch');
-      await say(N.elder, ['me', 'give', 'fire']);
+      set('elderAsked');
+      await say(N.elder, ['me', 'want', 'flower', 'yellow']);
     } else {
       await say(N.elder, ['what']);
     }
+  },
+  async receive(it) {
+    if (!flag('metKeeper') || !it.startsWith('flower') || flag('gotTorch')) return false;
+    if (it !== 'flower_yellow') {
+      sfx.nope();
+      await say(N.elder, ['not']);
+      await say(N.elder, ['flower', 'yellow']);
+      return;
+    }
+    take(it);
+    set('elderAsked');
+    await say(N.elder, ['good']);
+    give('torch');
+    set('gotTorch');
+    await say(N.elder, ['me', 'give', 'fire']);
   },
 };
 
@@ -421,9 +440,14 @@ const keeper = {
   ...N.keeper,
   async talk() {
     if (flag('lit')) return say(N.keeper, ['fire', 'big', 'good']);
-    if (!flag('metKeeper')) { set('metKeeper'); await say(N.keeper, ['hello']); }
+    if (!flag('metKeeper')) { await say(N.keeper, ['hello']); }
     await say(N.keeper, ['not', 'fire', 'big']);
     await say(N.keeper, ['me', 'want', 'fire']);
+    if (!flag('metKeeper')) {
+      set('metKeeper');
+      give('key');
+      await say(N.keeper, ['me', 'give', 'key']);
+    }
   },
   async receive(it) {
     if (it !== 'torch') return false;
@@ -431,20 +455,18 @@ const keeper = {
   },
 };
 
-async function stairsDoor() {
-  if (flag('unlocked')) return goto('top');
-  set('triedStairs');
+async function forestGate() {
+  if (flag('forestOpen')) return goto('forest');
   if (has('key')) {
     take('key');
-    set('unlocked');
+    set('forestOpen');
     sfx.door();
     renderScene();
-    await say(N.door, ['door', 'open']);
-    return goto('top');
+    await wait(500);
+    return goto('forest');
   }
-  wiggle('sdoor');
+  wiggle('fgate');
   sfx.nope();
-  await say(N.door, ['door', 'not', 'open']);
 }
 
 function bush(color, x, y) {
@@ -463,7 +485,7 @@ function bush(color, x, y) {
   };
 }
 
-// Exits are signposts: "go <place>" plus an arrow.
+// Exits are signposts naming the destination, plus an arrow.
 function exit(to, sign, x, y, dir) {
   return { id: 'exit_' + to, x, y, sign: [sign], arrow: dir, cls: 'exit', tap: () => goto(to) };
 }
@@ -484,8 +506,9 @@ const SCENES = {
       { id: 'shell', x: 70, y: 92, s: 6, e: '🐚', deco: true },
       { id: 'crab', x: 22, y: 90, s: 7, e: '🦀', deco: true, cls: 'scuttle' },
       { id: 'rod', x: 56, y: 70, s: 10, e: '🎣', deco: true },
+      { id: 'caught', x: 52, y: 60, s: 9, e: '🐟', deco: true, cls: 'bob', show: () => flag('fishShown') && !has('fish') },
       { id: 'fisher', x: 42, y: 73, s: 19, npc: fisher },
-      exit('village', ['go', 'house'], 82, 74, 'upright'),
+      { ...exit('village', ['house'], 84, 74, 'upright'), show: () => flag('gotFish') },
     ],
   },
   village: {
@@ -496,15 +519,15 @@ const SCENES = {
       { id: 'bakery', x: 24, y: 33, w: 32, art: bakerySVG, deco: true },
       plaque('foodsign', [['food']], 24, 47, 6),
       { id: 'baker', x: 25, y: 57, s: 14, npc: baker },
-      { id: 'well', x: 60, y: 45, w: 20, art: wellSVG, tap: wellTap },
-      plaque('wellsign', [['water']], 60, 32, 6),
-      { id: 'child', x: 82, y: 60, s: 12, npc: child },
-      { id: 'tear', x: 90, y: 52, s: 6, e: '😢', deco: true, show: () => !flag('childDone'), cls: 'bob' },
+      { id: 'well', x: 62, y: 45, w: 20, art: wellSVG, tap: wellTap },
+      plaque('wellsign', [['water']], 62, 32, 6),
       { id: 'elder', x: 40, y: 80, s: 14, npc: elder },
-      { id: 'campfire', x: 53, y: 84, s: 9, e: '🔥', deco: true, cls: 'flicker' },
-      exit('shore', ['go', 'water'], 13, 93, 'downleft'),
-      exit('forest', ['go', 'tree'], 86, 84, 'right'),
-      exit('gate', ['go', 'fire', 'big'], 52, 10, 'up'),
+      { id: 'zzz', x: 48, y: 72, s: 6, e: '💤', deco: true, cls: 'bob', show: () => !flag('metKeeper') },
+      { id: 'campfire', x: 54, y: 85, s: 9, e: '🔥', deco: true, cls: 'flicker' },
+      { id: 'fgate', x: 86, y: 66, w: 20, art: () => fenceGateSVG(flag('forestOpen')), tap: forestGate, receive: (it) => (it === 'key' ? forestGate() : false) },
+      { id: 'fsign', x: 86, y: 53, sign: [['tree']], arrow: 'right', cls: 'exit', tap: forestGate },
+      exit('shore', ['water'], 13, 93, 'downleft'),
+      exit('gate', ['fire', 'big'], 52, 10, 'up'),
     ],
   },
   forest: {
@@ -524,7 +547,7 @@ const SCENES = {
       plaque('s_blue', [['flower', 'blue']], 70, 78, 5.5),
       bush('yellow', 87, 46),
       plaque('s_yellow', [['flower', 'yellow']], 87, 58, 5.5),
-      exit('village', ['go', 'house'], 16, 91, 'downleft'),
+      exit('village', ['house'], 16, 91, 'downleft'),
     ],
   },
   gate: {
@@ -535,7 +558,7 @@ const SCENES = {
       { id: 'tower', x: 50, y: 38, w: 58, art: () => towerSVG(flag('lit'), flag('gateOpen')), tap: gateTap },
       plaque('gatesign', [['fire', 'big']], 50, 52, 6),
       { id: 'guard', x: 75, y: 73, s: 16, npc: guard },
-      exit('village', ['go', 'house'], 16, 91, 'downleft'),
+      exit('village', ['house'], 16, 91, 'downleft'),
     ],
   },
   hall: {
@@ -544,20 +567,10 @@ const SCENES = {
       plaque('hallsign', [['door', 'red', 'not', 'good'], ['door', 'yellow', 'not', 'good']], 50, 16, 6),
       { id: 'c1', x: 8, y: 34, s: 8, e: '🕯️', deco: true, cls: 'flicker' },
       { id: 'c2', x: 92, y: 34, s: 8, e: '🕯️', deco: true, cls: 'flicker' },
-      { id: 'dred', x: 20, y: 52, w: 22, art: () => doorSVG(COLORS.red), tap: wrongDoor },
-      { id: 'dblue', x: 50, y: 52, w: 22, art: () => doorSVG(COLORS.blue), tap: () => goto('stairs') },
-      { id: 'dyellow', x: 80, y: 52, w: 22, art: () => doorSVG(COLORS.yellow), tap: wrongDoor },
-      exit('gate', ['go'], 50, 90, 'down'),
-    ],
-  },
-  stairs: {
-    bg: 'linear-gradient(#25202b 0%, #2f2a36 100%)',
-    objs: () => [
-      { id: 'steps', x: 50, y: 66, w: 80, art: stairsSVG, deco: true },
-      { id: 'c3', x: 14, y: 30, s: 8, e: '🕯️', deco: true, cls: 'flicker' },
-      plaque('keysign', [['key']], 50, 12, 6),
-      { id: 'sdoor', x: 50, y: 32, w: 24, art: () => doorSVG('#8a5a2b', { lock: !flag('unlocked'), open: flag('unlocked') }), tap: stairsDoor, receive: (it) => (it === 'key' ? stairsDoor() : false) },
-      exit('hall', ['go'], 50, 92, 'down'),
+      { id: 'dred', x: 20, y: 52, w: 22, art: () => doorSVG(COLORS.red), tap: () => wrongDoor('red') },
+      { id: 'dblue', x: 50, y: 52, w: 22, art: () => doorSVG(COLORS.blue), tap: () => goto('top') },
+      { id: 'dyellow', x: 80, y: 52, w: 22, art: () => doorSVG(COLORS.yellow), tap: () => wrongDoor('yellow') },
+      { id: 'hexit', x: 50, y: 90, sign: [[]], arrow: 'down', cls: 'exit', tap: () => goto('gate') },
     ],
   },
   top: {
@@ -571,7 +584,7 @@ const SCENES = {
       { id: 's3', x: 66, y: 22, s: 3.5, e: '✨', deco: true, cls: 'twinkle' },
       { id: 'brazier', x: 62, y: 50, w: 44, art: () => brazierSVG(flag('lit')), tap: () => (flag('lit') ? say(N.keeper, ['fire', 'big', 'good']) : say(N.keeper, ['not', 'fire', 'big'])), receive: (it) => (it === 'torch' ? lightFire() : false) },
       { id: 'keeper', x: 24, y: 68, s: 16, npc: keeper },
-      exit('stairs', ['go'], 50, 92, 'down'),
+      { id: 'texit', x: 50, y: 92, sign: [[]], arrow: 'down', cls: 'exit', tap: () => goto('hall') },
     ],
   },
 };
@@ -585,10 +598,10 @@ async function gateTap() {
   if (flag('gateOpen')) return goto('hall');
   await say(N.guard, ['you', 'not', 'go']);
 }
-async function wrongDoor() {
+async function wrongDoor(color) {
   sfx.door();
   await goto('gate', true);
-  await say(N.guard, ['hello']);
+  await say(N.guard, ['door', color, 'not', 'good']);
 }
 
 // ===========================================================================
@@ -672,8 +685,13 @@ async function goto(scene, quick) {
 function renderPointer() {
   const p = $('#pointer');
   let target = null;
-  if (!busy && $('#title').hidden) {
-    if (S.scene === 'shore' && !flag('metFisher')) target = document.querySelector('[data-id="fisher"]');
+  const p1 = PAGES[0];
+  if (!$('#journal').hidden) {
+    // Inside the journal: show where the first glyph goes, once.
+    if (jIndex === 1 && !S.solved[p1.id] && !(S.slots[p1.id] || []).some(Boolean) && !document.querySelector('.pickwrap')) target = document.querySelector('#journal .slot');
+  } else if (!busy && $('#title').hidden && !document.querySelector('.overlay.compose, .overlay.menu, .overlay.ending')) {
+    if (pageUnlocked(p1) && !S.solved[p1.id] && !flag('journalOpened')) target = $('#btnJournal');
+    else if (S.scene === 'shore' && !flag('gotFish')) target = document.querySelector('[data-id="fisher"]');
     else if (has('fish') && !flag('everSelected') && S.scene === 'village') target = document.querySelector('#inv .item');
     else if (selected === 'fish' && !flag('bakerTraded') && S.scene === 'village') target = document.querySelector('[data-id="baker"]');
   }
@@ -693,6 +711,7 @@ function openJournal() {
   if (busy) return;
   sfx.page();
   journalDot = false;
+  if (!flag('journalOpened')) set('journalOpened');
   renderTopbar();
   // Jump to the newest unsolved page if there is one.
   const firstOpen = PAGES.findIndex((p) => pageUnlocked(p) && !S.solved[p.id]);
@@ -728,6 +747,7 @@ function renderJournal() {
   const body = j.querySelector('.jbody');
   if (jIndex === 0) renderLexicon(body);
   else renderPage(body, PAGES[jIndex - 1]);
+  renderPointer();
 }
 
 function renderLexicon(body) {
@@ -756,7 +776,8 @@ function openPicker(pg, idx) {
       <div class="pctrl"><button class="iconbtn pclear">${ICONS.back}</button><button class="iconbtn pclose">${ICONS.close}</button></div>
     </div></div>`);
   document.body.appendChild(ov);
-  const close = () => ov.remove();
+  renderPointer();
+  const close = () => { ov.remove(); renderPointer(); };
   ov.onclick = (e) => { if (e.target === ov) close(); };
   ov.querySelector('.pclose').onclick = close;
   ov.querySelector('.pclear').onclick = () => { S.slots[pg.id][idx] = null; save(); close(); renderJournal(); };

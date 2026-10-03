@@ -21,7 +21,6 @@ const GLYPHS = {
   want: ['M24 30 Q50 86 76 30', 'M50 12 L50 36', VERB_BASE],
   give: ['M16 26 Q32 64 48 26', 'M50 54 L84 54', 'M72 42 L84 54 L72 66', VERB_BASE],
   go: ['M22 22 L46 50 L22 78', 'M50 22 L74 50 L50 78', VERB_BASE],
-  open: ['M30 12 L30 82', 'M30 12 L66 24 L66 70 L30 82', VERB_BASE],
   fish: ['M14 50 Q42 18 70 50 Q42 82 14 50', 'M70 50 L88 34 L88 66 Z', 'M32 46 L32 47'],
   food: ['M14 64 Q14 32 50 32 Q86 32 86 64 L86 72 L14 72 Z', 'M34 42 L40 54', 'M50 42 L56 54', 'M66 42 L72 54'],
   water: ['M12 36 Q24 24 36 36 Q48 48 60 36 Q72 24 84 36', 'M12 62 Q24 50 36 62 Q48 74 60 62 Q72 50 84 62'],
@@ -53,18 +52,18 @@ const PICTO = {
   me: { e: '🙋' }, you: { e: '👉' }, want: { e: '🤲' }, give: { e: '🎁' }, food: { e: '🍞' },
   flower: { e: '🌸' }, red: { c: '#d9412b' }, blue: { c: '#2f6fd1' }, yellow: { c: '#f2c230' },
   fire: { e: '🔥' }, big: { svg: BIG_SVG }, what: { e: '🤔' }, not: { e: '🚫' },
-  one: { dots: 1 }, two: { dots: 2 }, door: { e: '🚪' }, open: { e: '🔓' }, key: { e: '🔑' },
+  one: { dots: 1 }, two: { dots: 2 }, door: { e: '🚪' }, key: { e: '🔑' },
 };
 
 // Journal pages. A page appears once all its glyphs have been seen
 // (and, optionally, once a story flag is set so there is enough context).
 const PAGES = [
-  { id: 'p1', words: ['hello', 'fish', 'yes', 'good'] },
-  { id: 'p2', words: ['go', 'house', 'water', 'tree'] },
-  { id: 'p3', words: ['me', 'you', 'want', 'give', 'food'], flag: 'bakerTraded' },
-  { id: 'p4', words: ['flower', 'red', 'blue', 'yellow'], flag: 'watered' },
-  { id: 'p5', words: ['fire', 'big', 'what', 'not'], flag: 'metKeeper' },
-  { id: 'p6', words: ['one', 'two', 'door', 'open', 'key'], flag: 'triedStairs' },
+  { id: 'p1', words: ['hello', 'fish', 'yes', 'not'] },
+  { id: 'p2', words: ['me', 'want', 'good', 'food'], flag: 'bakerTraded' },
+  { id: 'p3', words: ['house', 'water', 'tree'] },
+  { id: 'p4', words: ['you', 'go', 'one', 'two', 'what'], flag: 'gateOpen' },
+  { id: 'p5', words: ['fire', 'big', 'door', 'red', 'yellow'], flag: 'metKeeper' },
+  { id: 'p6', words: ['give', 'key', 'flower', 'blue'], flag: 'watered' },
 ];
 
 const COLORS = { red: '#d9412b', blue: '#2f6fd1', yellow: '#f2c230' };
