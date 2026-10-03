@@ -27,6 +27,8 @@ The finished intro will use 10 words. Words so far:
 | hello | greeting |
 | train | train |
 | go | go / leave |
+| ticket | ticket |
+| not | not / no |
 
 ## Code
 

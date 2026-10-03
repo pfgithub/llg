@@ -33,14 +33,20 @@ const SOLIDS = [
   // benches
   { x: 3.4, y: 17, w: 0.8, h: 2.2 },
   { x: 11.8, y: 28, w: 0.8, h: 2.2 },
+  // ticket machine by the gates
+  { x: 12.0, y: 11.2, w: 0.8, h: 1.3 },
 ];
+const MACHINE = SOLIDS[SOLIDS.length - 1];
+const MACHINE_FRONT = { x: 11.45 * T, y: 11.85 * T };
 // Gate gaps. Closed to the player for now; other people pass.
 const GATES = [{ x: 5, y: 9.6, w: 1, h: 0.8 }, { x: 10, y: 9.6, w: 1, h: 0.8 }];
 
 // Fixed signs: glyphs painted on the world.
 const SIGNS = [
-  { x: 4.2, y: 12.5, g: ['train'] },
-  { x: 11.8, y: 12.5, g: ['train'] },
+  { x: 4.2, y: 13.5, g: ['train'] },
+  { x: 11.8, y: 14.2, g: ['train'] },
+  { x: 8, y: 10, g: ['ticket'] },
+  { x: 12.4, y: 10.75, g: ['ticket'], small: true },
 ];
 
 // ---------------------------------------------------------------------------
@@ -97,7 +103,14 @@ function buildStatic() {
     g.fillStyle = 'rgba(0,0,0,.18)';
     g.fillRect(s.x * T + 3, (s.y + s.h) * T, s.w * T, 4);
   }
-  for (const s of SOLIDS.slice(11)) {
+  // ticket machine
+  g.fillStyle = '#4f6b8a';
+  roundRect(g, MACHINE.x * T, MACHINE.y * T, MACHINE.w * T, MACHINE.h * T, 4); g.fill();
+  g.fillStyle = '#9fd0c8';
+  g.fillRect(MACHINE.x * T + 3, MACHINE.y * T + 8, 6, MACHINE.h * T - 16);
+  g.fillStyle = '#1f1d24';
+  g.fillRect(MACHINE.x * T + 2, (MACHINE.y + MACHINE.h * 0.7) * T, 3, 8);
+  for (const s of SOLIDS.slice(11, 13)) {
     g.fillStyle = PAL.bench;
     g.fillRect(s.x * T, s.y * T, s.w * T, s.h * T);
     g.fillStyle = 'rgba(255,255,255,.15)';
@@ -109,7 +122,7 @@ function buildStatic() {
 }
 
 function drawSign(g, s) {
-  const n = s.g.length, size = 18, pad = 4;
+  const n = s.g.length, size = s.small ? 13 : 18, pad = s.small ? 3 : 4;
   const w = n * size + (n - 1) * 3 + pad * 2, h = size + pad * 2;
   const x = s.x * T - w / 2, y = s.y * T - h / 2;
   g.fillStyle = '#2b4f7a';
@@ -181,6 +194,12 @@ function drawPerson(g, a, t) {
     g.fillStyle = lk.bag;
     g.fillRect(-r * 0.95, -r * 0.6, r * 0.45, r * 1.2);
   }
+  if (a.holding === 'ticket') {
+    g.fillStyle = '#ffffff';
+    g.strokeStyle = '#1f1d24'; g.lineWidth = 1;
+    g.fillRect(r * 0.9, -4, 9, 7); g.strokeRect(r * 0.9, -4, 9, 7);
+    g.fillStyle = '#c4443a'; g.fillRect(r * 0.9 + 2, -2, 5, 1.5);
+  }
   // head
   g.fillStyle = lk.skin;
   g.beginPath(); g.arc(r * 0.15, 0, r * 0.62, 0, Math.PI * 2); g.fill();
@@ -232,10 +251,13 @@ function renderWorld(g, view, state) {
   g.drawImage(staticLayer, 0, 0, MAP_W * T, MAP_H * T);
 
   // gate barriers
-  for (const gt of GATES) {
+  GATES.forEach((gt, i) => {
     g.fillStyle = PAL.barrier;
-    if (!state.gatesOpen) g.fillRect(gt.x * T + 2, gt.y * T + gt.h * T / 2 - 3, gt.w * T - 4, 6);
-  }
+    const open = state.gatesOpen && state.gatesOpen[i];
+    const w = open ? 5 : gt.w * T / 2 - 2;
+    g.fillRect(gt.x * T + 2, gt.y * T + gt.h * T / 2 - 3, w, 6);
+    g.fillRect((gt.x + gt.w) * T - 2 - w, gt.y * T + gt.h * T / 2 - 3, w, 6);
+  });
   for (const tr of state.trains) if (tr.visible) drawTrain(g, tr);
   const actors = state.actors.slice().sort((a, b) => a.y - b.y);
   for (const a of actors) drawPerson(g, a, state.t || 0);
@@ -247,6 +269,7 @@ function renderWorld(g, view, state) {
     if (!a) continue;
     const sx = (a.x - view.cx) * view.scale + view.w / 2;
     const sy = (a.y - 14 - view.cy) * view.scale + view.h / 2;
+    if (sx < -20 || sx > view.w + 20 || sy < 0 || sy > view.h + 20) continue;
     drawBubble(g, sx, sy, b.g, view.w);
   }
 }

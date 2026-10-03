@@ -99,10 +99,10 @@ function snapshot(speaker) {
   return {
     cx: Math.round(view.cx), cy: Math.round(view.cy),
     actors: [player, ...actors].filter(near).map((o) => ({
-      id: o.id, x: Math.round(o.x), y: Math.round(o.y), dir: +o.dir.toFixed(2), look: o.look, alpha: o.alpha,
+      id: o.id, x: Math.round(o.x), y: Math.round(o.y), dir: +o.dir.toFixed(2), look: o.look, alpha: o.alpha, holding: o.holding || null,
     })),
     trains: trains.filter((t) => t.visible).map((t) => ({ x: t.x, y: Math.round(t.y), w: t.w, len: t.len, car: t.car, color: t.color, roof: t.roof, doors: t.doors, side: t.side, open: t.open, visible: true })),
-    gatesOpen: false,
+    gatesOpen: gates.map((gt) => gt.open > 0),
   };
 }
 function remember(a, glyphs) {
@@ -140,8 +140,10 @@ function runTasks(a, dt) {
   } else if (t.fade) {
     a.alpha -= dt * 2;
     if (a.alpha <= 0) { a.gone = true; a.tasks.shift(); }
+  } else if (t.until) {
+    if (t.until(a)) a.tasks.shift();
   } else if (t.fn) {
-    t.fn(a); a.tasks.shift();
+    a.tasks.shift(); t.fn(a);
   }
 }
 function faceTo(a, b) { a.dir = Math.atan2(b.y - a.y, b.x - a.x); }
@@ -218,11 +220,13 @@ function spawnAlighting(tr, door) {
     { fn: (a) => { a.alpha = 1; } },
     { walk: [d.x + tr.side * 1.1 * T, d.y] },
     { walk: [ax, d.y] },
-    { walk: [ax, 11 * T] },
-    { walk: [tr.gateX, 7.5 * T] },
+    { walk: [ax, 11.4 * T] },
+    { walk: [tr.gateX, GATE_APPROACH_PLATFORM] },
+    ...gateVisit(gateIndex(tr), 'up'),
     { walk: [tr.gateX + (Math.random() - 0.5) * 2 * T, 3 * T] },
     { fade: true },
   );
+  p.hasTicket = Math.random() < 0.65;
   actors.push(p);
 }
 
@@ -235,8 +239,10 @@ function spawnBoarders(tr) {
       const d = doorPoint(tr, door);
       const p = makeActor(tr.gateX, 3 * T, randomLook(), { role: 'traveller' });
       p.speed = 2.1 * T;
+      p.hasTicket = true;
       p.tasks.push(
-        { walk: [tr.gateX, 11 * T] },
+        { walk: [tr.gateX, GATE_APPROACH_HALL] },
+        ...gateVisit(gateIndex(tr), 'down'),
         { walk: [tr.aisle, d.y] },
         { walk: [d.x + tr.side * 1.1 * T, d.y] },
         { walk: [d.x, d.y] },
@@ -248,13 +254,102 @@ function spawnBoarders(tr) {
 }
 
 // ===========================================================================
+// Ticket gates. The guard checks everyone; without a ticket you do not pass.
+// ===========================================================================
+const gates = GATES.map(() => ({ open: 0 }));
+const GATE_APPROACH_PLATFORM = 11.0 * T, GATE_APPROACH_HALL = 8.3 * T;
+const gateIndex = (tr) => (tr.gateX < 8 * T ? 0 : 1);
+const gateX = (i) => (GATES[i].x + GATES[i].w / 2) * T;
+
+// The steps a traveller takes at a gate. Without a ticket they are turned
+// away, buy one at the machine, and come back.
+function gateVisit(i, way) {
+  const fromY = way === 'up' ? GATE_APPROACH_PLATFORM : GATE_APPROACH_HALL;
+  const toY = way === 'up' ? 8.2 * T : 11.2 * T;
+  return [
+    { until: () => !guard.busy },
+    { fn: (a) => { guard.busy = a; faceTo(guard, a); a.dir = way === 'up' ? -Math.PI / 2 : Math.PI / 2; } },
+    { wait: 0.4 },
+    { fn: () => say(guard, ['ticket']) },
+    { wait: 1.3 },
+    { fn: (a) => {
+      if (a.hasTicket) {
+        a.holding = 'ticket';
+        a.tasks.unshift(
+          { wait: 0.9 },
+          { fn: () => { say(guard, ['go']); gates[i].open = 2.6; } },
+          { wait: 0.5 },
+          { walk: [gateX(i), toY] },
+          { fn: (b) => { b.holding = null; if (guard.busy === b) guard.busy = null; } },
+        );
+      } else {
+        a.tasks.unshift(
+          { fn: () => say(guard, ['not', 'ticket']) },
+          { wait: 1.6 },
+          { fn: () => { if (guard.busy === a) guard.busy = null; } },
+          { walk: [gateX(i), fromY + 0.6 * T] },
+          { walk: [MACHINE_FRONT.x - 0.2 * T, MACHINE_FRONT.y + 0.5 * T] },
+          { walk: [MACHINE_FRONT.x, MACHINE_FRONT.y] },
+          { face: 0 },
+          { wait: 1.8 },
+          { fn: (b) => { b.hasTicket = true; b.holding = 'ticket'; } },
+          { wait: 0.8 },
+          { fn: (b) => { b.holding = null; } },
+          { walk: [gateX(i), fromY + 0.4 * T] },
+          { walk: [gateX(i), fromY] },
+          ...gateVisit(i, way),
+        );
+      }
+    } },
+  ];
+}
+
+let playerAtGate = -99;
+function gatesTick(dt) {
+  for (const gt of gates) gt.open = Math.max(0, gt.open - dt);
+  // You at the gate.
+  if (!S.introDone || guard.busy) return;
+  if (player.y < 9.4 * T || (player.holding && guard.busy !== player && player.y > 12 * T)) player.holding = null;
+  if (player.y < 9.4 * T) return;
+  const i = [0, 1].find((k) => Math.abs(player.x - gateX(k)) < 0.8 * T && Math.abs(player.y - GATE_APPROACH_PLATFORM) < 0.8 * T);
+  if (i == null || clock - playerAtGate < 5) return;
+  playerAtGate = clock;
+  guard.busy = player;
+  faceTo(guard, player);
+  say(guard, ['ticket']);
+  later(1.3, () => {
+    if (S.hasTicket) {
+      player.holding = 'ticket';
+      later(0.8, () => { say(guard, ['go']); gates[i].open = 5; });
+      later(3.5, () => { if (guard.busy === player) guard.busy = null; });
+    } else {
+      say(guard, ['not', 'ticket']);
+      later(1.8, () => { if (guard.busy === player) guard.busy = null; });
+    }
+  });
+}
+
+function machineTick() {
+  if (S.hasTicket || !S.introDone) return;
+  if (Math.hypot(player.x - MACHINE_FRONT.x, player.y - MACHINE_FRONT.y) < 0.8 * T) {
+    S.hasTicket = true;
+    player.holding = 'ticket';
+    later(1.2, () => { if (player.y > 10 * T) player.holding = null; });
+    tone(660, 0.12, 0.06); tone(990, 0.2, 0.06, 0.1);
+    writeSave();
+  }
+}
+
+// ===========================================================================
 // People who stay on the platform
 // ===========================================================================
 const worker = makeActor(8 * T, 24 * T, { body: '#4a4f5c', vest: '#f08a24', skin: SKIN[2], hair: '#1c1c1c', size: 9.5 }, { role: 'worker', pitch: 170 });
 worker.dir = Math.PI;
 const parent = makeActor(3.85 * T, 18.6 * T, { body: '#6b5a8f', skin: SKIN[1], hair: '#2b211c' }, { role: 'parent', pitch: 190, dir: 0 });
 const child = makeActor(3.85 * T, 17.5 * T, { body: '#e0b040', skin: SKIN[1], hair: '#2b211c', size: 6.5 }, { role: 'child', pitch: 340, dir: 0 });
-actors.push(worker, parent, child);
+const guard = makeActor(8 * T, 11.0 * T, { body: '#30363f', skin: SKIN[3], hair: '#1c1c1c', hat: '#30363f', size: 9.5 }, { role: 'guard', pitch: 110 });
+guard.dir = Math.PI / 2;
+actors.push(worker, parent, child, guard);
 const RESIDENTS = [worker, parent, child];
 
 const greeted = new WeakSet();
@@ -326,7 +421,8 @@ window.addEventListener('keyup', (e) => { keys[e.key] = false; });
 const PR = 8;
 function blocked(x, y) {
   if (x < 3 * T + PR || x > 13 * T - PR || y < T + PR || y > 35 * T - PR) return true;
-  for (const s of SOLIDS.concat(GATES)) {
+  if (Math.hypot(x - guard.x, y - guard.y) < PR + 8) return true;
+  for (const s of SOLIDS.concat(GATES.filter((g, i) => gates[i].open <= 0))) {
     const cx = Math.max(s.x * T, Math.min(x, (s.x + s.w) * T));
     const cy = Math.max(s.y * T, Math.min(y, (s.y + s.h) * T));
     if ((x - cx) ** 2 + (y - cy) ** 2 < PR * PR) return true;
@@ -390,6 +486,8 @@ function frame(now) {
   for (let i = actors.length - 1; i >= 0; i--) if (actors[i].gone) actors.splice(i, 1);
   if (player.bubble && player.bubble.until < clock) player.bubble = null;
   residentsTick();
+  gatesTick(dt);
+  machineTick();
 
   // camera
   view.w = W; view.h = H; view.scale = viewScale(W);
@@ -410,7 +508,7 @@ function frame(now) {
 function liveState() {
   const people = intro ? actors : [player, ...actors];
   return {
-    t: clock, trains, actors: people, gatesOpen: false,
+    t: clock, trains, actors: people, gatesOpen: gates.map((gt) => gt.open > 0),
     bubbles: people.filter((a) => a.bubble).map((a) => ({ actorId: a.id, g: a.bubble.g })),
   };
 }

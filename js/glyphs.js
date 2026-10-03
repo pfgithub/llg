@@ -6,8 +6,10 @@
 
 const WORDS = {
   hello: ['M24 26 Q50 46 76 26', 'M50 38 L50 80', 'M30 82 Q50 66 70 82'],
-  train: ['M20 30 L80 30', 'M20 70 L80 70', 'M36 30 L36 70', 'M64 50 L65 50'],
+  train: ['M26 26 Q52 50 26 74', 'M62 22 L62 78', 'M62 50 L82 36', 'M80 72 L80 73'],
   go: ['M20 52 Q38 20 56 52 Q74 84 80 50', 'M30 78 L30 79'],
+  ticket: ['M26 32 Q50 16 74 32 L60 56', 'M36 50 L36 82', 'M52 74 L74 74'],
+  not: ['M22 40 Q50 12 78 40', 'M22 64 Q50 92 78 64'],
 };
 
 // Interface marks. They belong to the same script but are not words.
