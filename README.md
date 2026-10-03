@@ -21,7 +21,7 @@ The goal is to relight the great fire at the top of the tower.
 
 ## The language (spoilers)
 
-25 words, one glyph each. Verbs share a line underneath. Colours share a hook on top. Numbers share a bar on top.
+25 words, one glyph each. The glyphs are arbitrary logograms, not pictures of their meaning, but each class shares a radical: verbs sit on a base stroke, colours hang from a hook, numbers carry a tick on the left, and "me" and "you" are mirror images.
 
 | Glyph id | Meaning | Glyph id | Meaning |
 |---|---|---|---|
