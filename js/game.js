@@ -7,7 +7,7 @@ const SAVE_KEY = 'llg-save-v2';
 const SETTINGS_KEY = 'llg-settings-v1';
 
 function freshState() {
-  return { scene: 'shore', inv: [], flags: {}, seen: [], confirmed: {}, slots: {}, solved: {}, notified: {}, newItems: [] };
+  return { scene: 'shore', inv: [], flags: {}, seen: [], confirmed: {}, slots: {}, solved: {}, notified: {}, newItems: [], log: [] };
 }
 
 let S = freshState();
@@ -183,6 +183,7 @@ function showLine(who, glyphs, options) {
       <div class="dbody"><div class="line"></div><div class="choices"></div></div>
       <div class="more"></div></div>`;
     const dlg = layer.querySelector('.dialog');
+    remember(who, glyphs);
     const line = layer.querySelector('.line');
     const cells = [];
     glyphs.forEach((g) => {
@@ -220,6 +221,18 @@ function showLine(who, glyphs, options) {
     };
     step();
   });
+}
+// Every line someone says is kept, so the journal can show a glyph in context.
+function speakerKey(who) { return Object.keys(N).find((k) => N[k] === who) || null; }
+function remember(who, glyphs) {
+  const k = speakerKey(who);
+  if (!k || !glyphs.length) return;
+  const key = k + ':' + glyphs.join(' ');
+  if (!S.log) S.log = [];
+  if (S.log.some((l) => l.k + ':' + l.g.join(' ') === key)) return;
+  S.log.push({ k, g: glyphs.slice() });
+  if (S.log.length > 80) S.log.shift();
+  save();
 }
 const say = (who, glyphs) => showLine(who, glyphs, null);
 const ask = (who, glyphs, options) => showLine(who, glyphs, options);
@@ -280,6 +293,7 @@ function compose(who, prompt) {
 // ===========================================================================
 const fisher = {
   ...N.fisher,
+  fresh: () => !flag('gotFish'),
   async talk() {
     if (!flag('metFisher')) {
       await say(N.fisher, ['hello']);
@@ -311,6 +325,7 @@ const fisher = {
 
 const baker = {
   ...N.baker,
+  fresh: () => !flag('metBaker'),
   async talk() {
     if (!flag('metBaker')) { set('metBaker'); await say(N.baker, ['hello']); }
     await say(N.baker, ['me', 'want', 'fish']);
@@ -328,6 +343,7 @@ const baker = {
 
 const elder = {
   ...N.elder,
+  fresh: () => flag('metKeeper') && !flag('elderAsked'),
   async talk() {
     if (!flag('metKeeper')) {
       // Asleep until there is a reason to wake her.
@@ -368,6 +384,7 @@ const elder = {
 
 const gardener = {
   ...N.gardener,
+  fresh: () => !flag('metGardener'),
   async talk() {
     if (flag('watered')) return say(N.gardener, ['flower', 'good']);
     if (!flag('metGardener')) { set('metGardener'); await say(N.gardener, ['hello']); }
@@ -400,6 +417,7 @@ async function guardAsk() {
 }
 const guard = {
   ...N.guard,
+  fresh: () => !flag('metGuard'),
   async talk() {
     if (flag('gateOpen')) return say(N.guard, ['you', 'go']);
     if (flag('guardFed')) return guardAsk();
@@ -438,6 +456,7 @@ async function lightFire() {
 }
 const keeper = {
   ...N.keeper,
+  fresh: () => !flag('metKeeper'),
   async talk() {
     if (flag('lit')) return say(N.keeper, ['fire', 'big', 'good']);
     if (!flag('metKeeper')) { await say(N.keeper, ['hello']); }
@@ -625,7 +644,7 @@ function renderScene() {
     if (o.sign) {
       el = h(`<div class="obj sign ${o.cls || ''}" style="--gs:${o.gs || 7}cqw">${o.sign.map((row) => `<div class="srow">${row.map((g) => glyphCell(g, false)).join('')}</div>`).join('')}${o.arrow ? arrowSVG(o.arrow) : ''}</div>`);
     } else if (o.npc) {
-      el = h(`<div class="obj npc emoji" style="font-size:${o.s}cqw">${o.npc.e}</div>`);
+      el = h(`<div class="obj npc emoji" style="font-size:${o.s}cqw">${o.npc.e}${o.npc.fresh && o.npc.fresh() ? `<span class="fresh">${ICONS.speak}</span>` : ''}</div>`);
     } else if (o.e) {
       el = h(`<div class="obj emoji ${o.cls || ''}" style="font-size:${o.s}cqw">${o.e}</div>`);
     } else {
@@ -753,8 +772,26 @@ function renderJournal() {
 function renderLexicon(body) {
   const known = GLYPH_IDS.filter((g) => S.confirmed[g]).length;
   body.innerHTML = `<div class="progress"><div style="width:${(known / GLYPH_IDS.length) * 100}%"></div></div>
-    <div class="lex">${S.seen.map((g) => `<div class="lexcell ${S.confirmed[g] ? 'known' : ''}">${glyphCell(g)}</div>`).join('')}
+    <div class="lex">${S.seen.map((g) => `<button class="lexcell ${S.confirmed[g] ? 'known' : ''}" data-g="${g}">${glyphCell(g)}</button>`).join('')}
     ${GLYPH_IDS.filter((g) => !S.seen.includes(g)).map(() => '<div class="lexcell unseen"></div>').join('')}</div>`;
+  body.querySelectorAll('button.lexcell').forEach((b) => { b.onclick = () => showUses(b.dataset.g); });
+}
+
+// Every sentence the glyph has appeared in, with who said it.
+function showUses(g) {
+  sfx.tap();
+  voice(PLAYER, g);
+  const lines = (S.log || []).filter((l) => l.g.includes(g));
+  const ov = h(`<div class="overlay pickwrap"><div class="picker uses">
+      <div class="usehead">${glyphCell(g)}</div>
+      <div class="uselist">${lines.map((l) => `<div class="use"><div class="portrait">${portraitHTML(N[l.k])}</div>
+        <div class="line">${l.g.map((x) => (x === '/' ? '<span class="br"></span>' : `<span class="${x === g ? 'hl' : ''}">${glyphCell(x)}</span>`)).join('')}</div></div>`).join('')}</div>
+      <div class="pctrl"><span></span><button class="iconbtn pclose">${ICONS.close}</button></div>
+    </div></div>`);
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.onclick = (e) => { if (e.target === ov) close(); };
+  ov.querySelector('.pclose').onclick = close;
 }
 
 function renderPage(body, pg) {
