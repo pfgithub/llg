@@ -354,16 +354,11 @@ const elder = {
     if (flag('gotTorch')) return say(N.elder, ['fire', 'good']);
     if (flag('elderAsked')) return say(N.elder, ['me', 'want', 'flower', 'yellow']);
     if (!flag('metElder')) { set('metElder'); await say(N.elder, ['hello']); }
-    const r = await compose(N.elder, ['you', 'want', 'what']);
-    if (!r) return;
-    await say(PLAYER, r);
-    if (r.includes('fire') && !r.includes('not')) {
-      await say(N.elder, ['good']);
-      set('elderAsked');
-      await say(N.elder, ['me', 'want', 'flower', 'yellow']);
-    } else {
-      await say(N.elder, ['what']);
-    }
+    const yes = await askWant(N.elder, (r) => r.includes('fire') && !r.includes('not'), ['you', 'want', 'fire', 'what'], 'elderFails');
+    if (!yes) return;
+    await say(N.elder, ['good']);
+    set('elderAsked');
+    await say(N.elder, ['me', 'want', 'flower', 'yellow']);
   },
   async receive(it) {
     if (!flag('metKeeper') || !it.startsWith('flower') || flag('gotTorch')) return false;
@@ -401,19 +396,32 @@ const gardener = {
   },
 };
 
-async function guardAsk() {
-  const r = await compose(N.guard, ['you', 'want', 'what']);
-  if (!r) return;
-  await say(PLAYER, r);
-  if (r.includes('go') && !r.includes('not')) {
-    await say(N.guard, ['good']);
-    set('gateOpen');
-    sfx.door();
-    renderScene();
-    await say(N.guard, ['you', 'go']);
-  } else {
-    await say(N.guard, ['what']);
+// "What do you want?" The player answers by composing a sentence.
+// After two wrong answers the speaker guesses instead, as a yes/no question.
+async function askWant(who, ok, guess, key) {
+  if ((S.flags[key] || 0) >= 2) {
+    const c = await ask(who, guess, [['yes'], ['not']]);
+    await say(PLAYER, c === 0 ? ['yes'] : ['not']);
+    return c === 0;
   }
+  const r = await compose(who, ['you', 'want', 'what']);
+  if (!r) return false;
+  await say(PLAYER, r);
+  if (ok(r)) return true;
+  S.flags[key] = (S.flags[key] || 0) + 1;
+  save();
+  await say(who, ['what']);
+  return false;
+}
+
+async function guardAsk() {
+  const yes = await askWant(N.guard, (r) => r.includes('go') && !r.includes('not'), ['you', 'go', 'what'], 'guardFails');
+  if (!yes) return;
+  await say(N.guard, ['good']);
+  set('gateOpen');
+  sfx.door();
+  renderScene();
+  await say(N.guard, ['you', 'go']);
 }
 const guard = {
   ...N.guard,
