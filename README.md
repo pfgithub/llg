@@ -29,6 +29,8 @@ The finished intro will use 10 words. Words so far:
 | go | go / leave |
 | ticket | ticket |
 | not | not / no |
+| big | big |
+| small | small |
 
 ## Code
 

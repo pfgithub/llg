@@ -10,6 +10,8 @@ const WORDS = {
   go: ['M20 52 Q38 20 56 52 Q74 84 80 50', 'M30 78 L30 79'],
   ticket: ['M26 32 Q50 16 74 32 L60 56', 'M36 50 L36 82', 'M52 74 L74 74'],
   not: ['M22 40 Q50 12 78 40', 'M22 64 Q50 92 78 64'],
+  big: ['M30 20 Q30 50 50 50 Q70 50 70 80', 'M70 22 L70 23', 'M24 80 L44 80'],
+  small: ['M24 34 L76 34', 'M50 34 Q36 58 50 82', 'M68 60 L76 68'],
 };
 
 // Interface marks. They belong to the same script but are not words.

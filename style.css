@@ -53,3 +53,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; padding: 
 .moment { width: 100%; aspect-ratio: 3 / 4; max-height: 70vh; border-radius: 12px; display: block; background: var(--bg); }
 .momentline { display: flex; justify-content: center; padding: 14px; }
 .momentline .glyph { width: 44px; height: 44px; }
+
+#end { position: fixed; inset: 0; z-index: 20; background: #121116; display: flex; align-items: center; justify-content: center; animation: fadein 1.2s; }
+@keyframes fadein { from { opacity: 0; } }
+.endwords { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; max-width: 340px; color: var(--paper); }
+.endword { width: 56px; height: 56px; animation: fadein .8s; }

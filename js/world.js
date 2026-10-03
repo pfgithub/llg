@@ -6,6 +6,7 @@
 
 const T = 32;
 const MAP_W = 16, MAP_H = 36;
+const TOP = -22; // the city lies north of the station, at negative y
 
 const PAL = {
   gravel: '#4b4741', sleeper: '#5e554a', rail: '#9aa0a6',
@@ -19,7 +20,8 @@ const PAL = {
 const SOLIDS = [
   { x: 0, y: 0, w: 3, h: MAP_H },          // track A
   { x: 13, y: 0, w: 3, h: MAP_H },         // track B
-  { x: 3, y: 0, w: 10, h: 1 },             // back wall of the hall
+  { x: 3, y: 0, w: 4, h: 1 },              // front wall of the hall,
+  { x: 9, y: 0, w: 4, h: 1 },              //   with the way out between
   { x: 3, y: 35, w: 10, h: 1 },            // end of the platform
   // gate line, with two gaps at x 5-6 and 10-11
   { x: 3, y: 9.6, w: 2, h: 0.8 },
@@ -38,6 +40,23 @@ const SOLIDS = [
 ];
 const MACHINE = SOLIDS[SOLIDS.length - 1];
 const MACHINE_FRONT = { x: 11.45 * T, y: 11.85 * T };
+// The city: tram line, buildings beyond it, and things in the plaza.
+const TRAM_Y = -12.75 * T;                 // centre line of the tram track
+const CITY_SOLIDS = [
+  { x: 0, y: TOP, w: MAP_W, h: 8 },        // buildings across the tracks
+  { x: 0, y: -14, w: MAP_W, h: 2.5 },      // tram track
+  { x: 0, y: -10, w: 0.6, h: 4 },          // hedges at the sides of the plaza,
+  { x: 0, y: -4, w: 0.6, h: 3 },           //   with side streets between
+  { x: 15.4, y: -10, w: 0.6, h: 4 },
+  { x: 15.4, y: -4, w: 0.6, h: 3 },
+  { x: 2.2, y: -6.2, w: 1.2, h: 1.2, tree: true },
+  { x: 12.6, y: -6.2, w: 1.2, h: 1.2, tree: true },
+  { x: 7, y: -6.4, w: 2, h: 2, fountain: true },
+  { x: 3.5, y: -2.4, w: 2.2, h: 0.7, bench: true },
+  { x: 10.3, y: -2.4, w: 2.2, h: 0.7, bench: true },
+];
+SOLIDS.push(...CITY_SOLIDS);
+
 // Gate gaps. Closed to the player for now; other people pass.
 const GATES = [{ x: 5, y: 9.6, w: 1, h: 0.8 }, { x: 10, y: 9.6, w: 1, h: 0.8 }];
 
@@ -47,6 +66,9 @@ const SIGNS = [
   { x: 11.8, y: 14.2, g: ['train'] },
   { x: 8, y: 10, g: ['ticket'] },
   { x: 12.4, y: 10.75, g: ['ticket'], small: true },
+  { x: 8, y: 8.9, g: ['train', 'big'] },
+  { x: 8, y: 1.6, g: ['train', 'small'] },
+  { x: 8, y: -10.7, g: ['train', 'small'] },
 ];
 
 // ---------------------------------------------------------------------------
@@ -58,9 +80,11 @@ const STATIC_RES = 2;
 function buildStatic() {
   const c = document.createElement('canvas');
   c.width = MAP_W * T * STATIC_RES;
-  c.height = MAP_H * T * STATIC_RES;
+  c.height = (MAP_H - TOP) * T * STATIC_RES;
   const g = c.getContext('2d');
   g.scale(STATIC_RES, STATIC_RES);
+  g.translate(0, -TOP * T);
+  drawCity(g);
 
   // tracks
   for (const tx of [0, 13]) {
@@ -87,17 +111,20 @@ function buildStatic() {
   g.fillRect(13 * T - 10, 10 * T, 6, 26 * T);
   // walls
   g.fillStyle = PAL.wall;
-  g.fillRect(3 * T, 0, 10 * T, T);
+  g.fillRect(3 * T, 0, 4 * T, T);
+  g.fillRect(9 * T, 0, 4 * T, T);
+  g.fillStyle = '#8a8478';
+  g.fillRect(7 * T, 0, 2 * T, T);
   g.fillRect(3 * T, 35 * T, 10 * T, T);
   // gate line
-  for (const s of SOLIDS.slice(4, 7)) {
+  for (const s of SOLIDS.slice(5, 8)) {
     g.fillStyle = PAL.gate;
     g.fillRect(s.x * T, s.y * T, s.w * T, s.h * T);
     g.fillStyle = PAL.wallTop;
     g.fillRect(s.x * T, s.y * T, s.w * T, 4);
   }
   // pillars and benches
-  for (const s of SOLIDS.slice(7, 11)) {
+  for (const s of SOLIDS.slice(8, 12)) {
     g.fillStyle = PAL.pillar;
     g.fillRect(s.x * T, s.y * T, s.w * T, s.h * T);
     g.fillStyle = 'rgba(0,0,0,.18)';
@@ -110,7 +137,7 @@ function buildStatic() {
   g.fillRect(MACHINE.x * T + 3, MACHINE.y * T + 8, 6, MACHINE.h * T - 16);
   g.fillStyle = '#1f1d24';
   g.fillRect(MACHINE.x * T + 2, (MACHINE.y + MACHINE.h * 0.7) * T, 3, 8);
-  for (const s of SOLIDS.slice(11, 13)) {
+  for (const s of SOLIDS.slice(12, 14)) {
     g.fillStyle = PAL.bench;
     g.fillRect(s.x * T, s.y * T, s.w * T, s.h * T);
     g.fillStyle = 'rgba(255,255,255,.15)';
@@ -119,6 +146,99 @@ function buildStatic() {
   // signs
   for (const s of SIGNS) drawSign(g, s);
   staticLayer = c;
+}
+
+function drawCity(g) {
+  // plaza paving
+  g.fillStyle = '#c9c2b4';
+  g.fillRect(0, -11.5 * T, MAP_W * T, 11.5 * T);
+  g.strokeStyle = 'rgba(0,0,0,.07)'; g.lineWidth = 1;
+  for (let y = -11; y < 0; y++) for (let x = 0; x < MAP_W; x++) g.strokeRect(x * T + ((y & 1) ? T / 2 : 0), y * T, T, T);
+  // tram stop edge
+  g.fillStyle = '#e8b931';
+  g.fillRect(4 * T, -11.5 * T, 8 * T, 4);
+  g.fillStyle = '#9a9488';
+  g.fillRect(4 * T, -11.5 * T + 4, 8 * T, 0.8 * T);
+  // tram track
+  g.fillStyle = '#6b665d';
+  g.fillRect(0, -14 * T, MAP_W * T, 2.5 * T);
+  g.fillStyle = PAL.rail;
+  g.fillRect(0, TRAM_Y - 12, MAP_W * T, 3);
+  g.fillRect(0, TRAM_Y + 9, MAP_W * T, 3);
+  // buildings beyond
+  const roofs = ['#8a5a4a', '#5f6f7f', '#9a8a5a', '#6f5a7a', '#5a7a6a'];
+  for (let i = 0, x = 0; x < MAP_W; i++) {
+    const w = 2.5 + (i * 7 % 3);
+    g.fillStyle = roofs[i % roofs.length];
+    g.fillRect(x * T, TOP * T, w * T - 3, 8 * T - 6);
+    g.fillStyle = 'rgba(0,0,0,.15)';
+    g.fillRect(x * T, (TOP + 7.5) * T, w * T - 3, 0.3 * T);
+    x += w;
+  }
+  // station front
+  g.fillStyle = PAL.wall;
+  g.fillRect(0, -0.2 * T, MAP_W * T, 0.2 * T);
+  // hedges
+  g.fillStyle = '#4f7a45';
+  for (const o of CITY_SOLIDS.slice(2, 6)) g.fillRect(o.x * T, o.y * T, o.w * T, o.h * T);
+  for (const o of CITY_SOLIDS) {
+    if (o.tree) {
+      g.fillStyle = 'rgba(0,0,0,.2)';
+      g.beginPath(); g.arc((o.x + o.w / 2) * T + 4, (o.y + o.h / 2) * T + 5, o.w * T * 0.75, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#5c8a4a';
+      g.beginPath(); g.arc((o.x + o.w / 2) * T, (o.y + o.h / 2) * T, o.w * T * 0.75, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#6f9e5a';
+      g.beginPath(); g.arc((o.x + o.w / 2) * T - 5, (o.y + o.h / 2) * T - 5, o.w * T * 0.4, 0, Math.PI * 2); g.fill();
+    } else if (o.fountain) {
+      const cx = (o.x + 1) * T, cy = (o.y + 1) * T;
+      g.fillStyle = '#9a9488'; g.beginPath(); g.arc(cx, cy, T, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#6fa8c8'; g.beginPath(); g.arc(cx, cy, T - 6, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#9a9488'; g.beginPath(); g.arc(cx, cy, 6, 0, Math.PI * 2); g.fill();
+    } else if (o.bench) {
+      g.fillStyle = PAL.bench;
+      g.fillRect(o.x * T, o.y * T, o.w * T, o.h * T);
+    }
+  }
+}
+
+function drawTram(g, tr) {
+  const x = tr.x, y = TRAM_Y - tr.h / 2;
+  g.fillStyle = 'rgba(0,0,0,.25)';
+  roundRect(g, x + 3, y + 4, tr.len, tr.h, 12); g.fill();
+  g.fillStyle = '#3f8a5a';
+  roundRect(g, x, y, tr.len, tr.h, 12); g.fill();
+  g.fillStyle = '#56a06f';
+  roundRect(g, x + 8, y + 7, tr.len - 16, tr.h - 14, 6); g.fill();
+  g.fillStyle = 'rgba(0,0,0,.3)';
+  g.fillRect(x + tr.len / 2 - 2, y, 4, tr.h);
+  for (const d of tr.doors) {
+    g.fillStyle = tr.open > 0 ? '#14131a' : '#2a2a33';
+    g.fillRect(x + d - 12 - tr.open * 4, y + tr.h - 5, 24 + tr.open * 8, 5);
+  }
+}
+
+function drawDog(g, a, t) {
+  const r = a.look.size;
+  g.save();
+  g.translate(a.x, a.y);
+  g.fillStyle = 'rgba(0,0,0,.2)';
+  g.beginPath(); g.ellipse(2, 3, r * 1.4, r * 0.8, 0, 0, Math.PI * 2); g.fill();
+  g.rotate(a.dir || 0);
+  const wag = Math.sin(t * 14 + a.phase) * 0.5;
+  g.strokeStyle = a.look.body; g.lineWidth = r * 0.35; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(-r * 1.1, 0); g.lineTo(-r * 1.6, wag * r); g.stroke();
+  g.fillStyle = a.look.body;
+  g.beginPath(); g.ellipse(0, 0, r * 1.2, r * 0.65, 0, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.arc(r * 1.15, 0, r * 0.5, 0, Math.PI * 2); g.fill();
+  g.fillStyle = a.look.ear;
+  g.beginPath(); g.ellipse(r * 1.05, -r * 0.42, r * 0.28, r * 0.16, 0.4, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(r * 1.05, r * 0.42, r * 0.28, r * 0.16, -0.4, 0, Math.PI * 2); g.fill();
+  if (a.lead) {
+    g.restore(); g.save();
+    g.strokeStyle = 'rgba(40,30,30,.6)'; g.lineWidth = 1.2;
+    g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(a.lead.x, a.lead.y); g.stroke();
+  }
+  g.restore();
 }
 
 function drawSign(g, s) {
@@ -214,23 +334,31 @@ function drawPerson(g, a, t) {
 }
 
 // Speech bubble in screen space.
-function drawBubble(g, sx, sy, glyphs, vw) {
+function drawBubble(g, sx, sy, glyphs, vw, placed = []) {
   const size = 26, gap = 4, pad = 8;
   const w = glyphs.length * size + (glyphs.length - 1) * gap + pad * 2;
   const h = size + pad * 2;
   let x = sx - w / 2;
   x = Math.max(6, Math.min(vw - w - 6, x));
-  const y = sy - h - 12;
+  let y = sy - h - 12;
+  // Stack above any bubble already drawn in the way.
+  for (let k = 0; k < 6; k++) {
+    const hit = placed.find((r) => x < r.x + r.w + 4 && r.x < x + w + 4 && y < r.y + r.h + 4 && r.y < y + h + 4);
+    if (!hit) break;
+    y = hit.y - h - 6;
+  }
+  placed.push({ x, y, w, h });
+  const tailTop = Math.min(sy - 12, y + h + 9);
   g.fillStyle = PAL.paper;
   g.strokeStyle = PAL.bubbleEdge;
   g.lineWidth = 2;
   roundRect(g, x, y, w, h, 10);
   g.fill(); g.stroke();
   g.beginPath();
-  g.moveTo(sx - 6, y + h - 1); g.lineTo(sx, y + h + 9); g.lineTo(sx + 6, y + h - 1);
+  g.moveTo(sx - 6, y + h - 1); g.lineTo(sx, Math.max(tailTop, y + h + 9)); g.lineTo(sx + 6, y + h - 1);
   g.fill();
   g.beginPath();
-  g.moveTo(sx - 6, y + h); g.lineTo(sx, y + h + 9); g.lineTo(sx + 6, y + h);
+  g.moveTo(sx - 6, y + h); g.lineTo(sx, Math.max(tailTop, y + h + 9)); g.lineTo(sx + 6, y + h);
   g.stroke();
   glyphs.forEach((id, i) => drawGlyph(g, id, x + pad + size / 2 + i * (size + gap), y + h / 2, size, PAL.ink));
 }
@@ -248,7 +376,7 @@ function renderWorld(g, view, state) {
   g.translate(view.w / 2, view.h / 2);
   g.scale(view.scale, view.scale);
   g.translate(-view.cx, -view.cy);
-  g.drawImage(staticLayer, 0, 0, MAP_W * T, MAP_H * T);
+  g.drawImage(staticLayer, 0, TOP * T, MAP_W * T, (MAP_H - TOP) * T);
 
   // gate barriers
   GATES.forEach((gt, i) => {
@@ -258,18 +386,29 @@ function renderWorld(g, view, state) {
     g.fillRect(gt.x * T + 2, gt.y * T + gt.h * T / 2 - 3, w, 6);
     g.fillRect((gt.x + gt.w) * T - 2 - w, gt.y * T + gt.h * T / 2 - 3, w, 6);
   });
-  for (const tr of state.trains) if (tr.visible) drawTrain(g, tr);
+  for (const tr of state.trains) if (tr.visible) (tr.tram ? drawTram : drawTrain)(g, tr);
   const actors = state.actors.slice().sort((a, b) => a.y - b.y);
-  for (const a of actors) drawPerson(g, a, state.t || 0);
+  for (const a of actors) {
+    if (a.hidden) continue;
+    if (a.look.dog) {
+      const lead = a.leadId && state.actors.find((o) => o.id === a.leadId);
+      drawDog(g, lead ? Object.assign({}, a, { lead }) : a, state.t || 0);
+    } else drawPerson(g, a, state.t || 0);
+  }
   g.restore();
 
-  // bubbles on top, in screen space
-  for (const b of state.bubbles) {
+  // bubbles on top, in screen space; nearer the bottom first so stacks grow upward
+  const placed = [];
+  const order = state.bubbles.slice().sort((p, q) => {
+    const a = state.actors.find((x) => x.id === p.actorId), b = state.actors.find((x) => x.id === q.actorId);
+    return (b ? b.y : 0) - (a ? a.y : 0);
+  });
+  for (const b of order) {
     const a = state.actors.find((x) => x.id === b.actorId);
     if (!a) continue;
     const sx = (a.x - view.cx) * view.scale + view.w / 2;
     const sy = (a.y - 14 - view.cy) * view.scale + view.h / 2;
     if (sx < -20 || sx > view.w + 20 || sy < 0 || sy > view.h + 20) continue;
-    drawBubble(g, sx, sy, b.g, view.w);
+    drawBubble(g, sx, sy, b.g, view.w, placed);
   }
 }

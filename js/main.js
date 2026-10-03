@@ -99,9 +99,9 @@ function snapshot(speaker) {
   return {
     cx: Math.round(view.cx), cy: Math.round(view.cy),
     actors: [player, ...actors].filter(near).map((o) => ({
-      id: o.id, x: Math.round(o.x), y: Math.round(o.y), dir: +o.dir.toFixed(2), look: o.look, alpha: o.alpha, holding: o.holding || null,
+      id: o.id, x: Math.round(o.x), y: Math.round(o.y), dir: +o.dir.toFixed(2), look: o.look, alpha: o.alpha, holding: o.holding || null, hidden: o.hidden || false, leadId: o.leadId || null,
     })),
-    trains: trains.filter((t) => t.visible).map((t) => ({ x: t.x, y: Math.round(t.y), w: t.w, len: t.len, car: t.car, color: t.color, roof: t.roof, doors: t.doors, side: t.side, open: t.open, visible: true })),
+    trains: trains.concat([tram]).filter((t) => t.visible).map((t) => ({ tram: !!t.tram, x: Math.round(t.x), y: Math.round(t.y), w: t.w, h: t.h, len: t.len, car: t.car, color: t.color, roof: t.roof, doors: t.doors, side: t.side, open: t.open, visible: true })),
     gatesOpen: gates.map((gt) => gt.open > 0),
   };
 }
@@ -201,7 +201,7 @@ function onTrainStopped(tr) {
 function stoppedTick(tr) {
   const ev = tr.events;
   const c = tr.conductor;
-  if (!ev.board && tr.timer < tr.dwell - 10) { ev.board = true; spawnBoarders(tr); }
+  if (!ev.board && tr.timer < tr.dwell - 1) { ev.board = true; spawnBoarders(tr); }
   if (!ev.call1 && tr.timer < 7) { ev.call1 = true; say(c, ['train', 'go']); later(1.4, () => say(child, ['train', 'go'])); }
   if (!ev.call2 && tr.timer < 4) { ev.call2 = true; say(c, ['train', 'go']); }
   if (!ev.in && tr.timer < 2) {
@@ -223,8 +223,9 @@ function spawnAlighting(tr, door) {
     { walk: [ax, 11.4 * T] },
     { walk: [tr.gateX, GATE_APPROACH_PLATFORM] },
     ...gateVisit(gateIndex(tr), 'up'),
-    { walk: [tr.gateX + (Math.random() - 0.5) * 2 * T, 3 * T] },
-    { fade: true },
+    { walk: [8 * T + (Math.random() - 0.5) * T, 2 * T] },
+    { walk: [8 * T, -1 * T] },
+    ...(Math.random() < 0.6 ? toTram() : toSideStreet()),
   );
   p.hasTicket = Math.random() < 0.65;
   actors.push(p);
@@ -237,10 +238,15 @@ function spawnBoarders(tr) {
       if (tr.state !== 'stopped') return;
       const door = 1 + Math.floor(Math.random() * 3);
       const d = doorPoint(tr, door);
-      const p = makeActor(tr.gateX, 3 * T, randomLook(), { role: 'traveller' });
-      p.speed = 2.1 * T;
+      const side = Math.random() < 0.5 ? 0.4 : 15.6;
+      const p = makeActor(side * T, -5 * T, randomLook(), { role: 'traveller' });
+      p.speed = 2.2 * T;
       p.hasTicket = true;
+      p.alpha = 0;
       p.tasks.push(
+        { fn: (a) => { a.alpha = 1; } },
+        { walk: [8 * T, -1 * T] },
+        { walk: [8 * T, 2 * T] },
         { walk: [tr.gateX, GATE_APPROACH_HALL] },
         ...gateVisit(gateIndex(tr), 'down'),
         { walk: [tr.aisle, d.y] },
@@ -341,6 +347,102 @@ function machineTick() {
 }
 
 // ===========================================================================
+// The city: the small train (tram), people waiting for it, dogs.
+// ===========================================================================
+const tram = { tram: true, x: -8 * T, len: 6 * T, h: 1.5 * T, doors: [1.5 * T, 4.5 * T], open: 0, state: 'away', timer: 6, visible: false, stopX: 5 * T, dwell: 24, away: 14 };
+const tramDoor = (i) => ({ x: tram.x + tram.doors[i], y: TRAM_Y + tram.h / 2 + 0.55 * T });
+const driver = makeActor(0, 0, { body: '#22324a', skin: SKIN[0], hair: '#1c1c1c' }, { role: 'driver', pitch: 150, hidden: true });
+
+function updateTram(dt) {
+  const tr = tram;
+  tr.timer -= dt;
+  if (tr.state === 'away' && tr.timer <= 0) {
+    tr.state = 'arriving'; tr.x = -tr.len - 20; tr.visible = true; tr.events = {};
+  } else if (tr.state === 'arriving') {
+    const d = tr.stopX - tr.x;
+    tr.x += Math.max(0.4 * T, Math.min(4 * T, d * 0.9)) * dt;
+    if (tr.x >= tr.stopX) {
+      tr.x = tr.stopX; tr.state = 'stopped'; tr.timer = tr.dwell;
+      if (!actors.includes(driver)) actors.push(driver);
+      later(1.5, () => say(driver, ['train', 'small']));
+      later(2.6, () => say(kid, ['train', 'small']));
+      later(4.2, () => say(kidParent, ['train', 'small']));
+    }
+  } else if (tr.state === 'stopped') {
+    tr.open = Math.min(1, tr.open + dt * 2);
+    if (!tr.events.call && tr.timer < 6) { tr.events.call = true; say(driver, ['train', 'small', 'go']); }
+    if (tr.timer <= 0) { tr.open = 0; tr.state = 'leaving'; tr.v = 0; }
+  } else if (tr.state === 'leaving') {
+    tr.v = Math.min(5 * T, tr.v + 1.5 * T * dt);
+    tr.x += tr.v * dt;
+    if (tr.x > MAP_W * T + 20) { tr.state = 'away'; tr.visible = false; tr.timer = tr.away; }
+  }
+  driver.x = tr.x + tr.len - 0.6 * T; driver.y = TRAM_Y;
+}
+
+function toTram() {
+  const spot = [5.5 + Math.random() * 5, -10.4 - Math.random() * 0.3];
+  return [
+    { walk: [spot[0] * T, -2 * T] },
+    { walk: [spot[0] * T, spot[1] * T] },
+    { face: -Math.PI / 2 },
+    { until: () => tram.state === 'stopped' && tram.open >= 1 },
+    { fn: (a) => {
+      const d = [0, 1].map(tramDoor).sort((p, q) => Math.abs(p.x - a.x) - Math.abs(q.x - a.x))[0];
+      a.tasks.unshift({ walk: [d.x, d.y] }, { fade: true });
+    } },
+  ];
+}
+function toSideStreet() {
+  const right = Math.random() < 0.5;
+  return [
+    { walk: [(right ? 12 : 4) * T, -3 * T] },
+    { walk: [(right ? 15.6 : 0.4) * T, -5 * T] },
+    { fade: true },
+  ];
+}
+
+const kid = makeActor(6.1 * T, -3.7 * T, { body: '#3f9ac0', skin: SKIN[3], hair: '#1c1c1c', size: 6.5 }, { role: 'kid', pitch: 360, dir: -Math.PI / 2 });
+const kidParent = makeActor(5.3 * T, -3.4 * T, { body: '#9a6a3a', skin: SKIN[3], hair: '#1c1c1c' }, { role: 'kidParent', pitch: 200, dir: -Math.PI / 2 });
+
+// Two people walk their dogs around the fountain: one big dog, one small.
+const LOOP = [[4.6, -8.6], [11.4, -8.6], [11.6, -3.4], [4.4, -3.4]];
+function makeWalker(look, start, reverse, dogLook) {
+  const w = makeActor(LOOP[start][0] * T, LOOP[start][1] * T, look, { role: 'walker', pitch: 180 + Math.random() * 60, speed: 1.1 * T });
+  w.loop = reverse ? LOOP.slice().reverse() : LOOP;
+  w.li = start;
+  const dog = makeActor(w.x, w.y + T, dogLook, { role: 'dog', leadId: w.id });
+  w.dog = dog;
+  return [w, dog];
+}
+const [walkerBig, dogBig] = makeWalker({ body: '#5a6a4a', skin: SKIN[4], hair: '#8c8c8c' }, 0, false, { dog: true, size: 11, body: '#7a5a3a', ear: '#5a3a22' });
+const [walkerSmall, dogSmall] = makeWalker({ body: '#a85a6a', skin: SKIN[0], hair: '#b08a4a' }, 2, true, { dog: true, size: 4.5, body: '#e8e0d0', ear: '#c8b8a0' });
+const lastSaid = {};
+function sayOnce(key, gap, a, g) {
+  if (clock - (lastSaid[key] || -99) < gap || a.bubble) return false;
+  lastSaid[key] = clock; say(a, g); return true;
+}
+
+function cityTick(dt) {
+  for (const w of [walkerBig, walkerSmall]) {
+    if (!w.tasks.length) { w.li = (w.li + 1) % w.loop.length; w.tasks.push({ walk: [w.loop[w.li][0] * T, w.loop[w.li][1] * T] }); }
+    const d = w.dog;
+    const bx = w.x - Math.cos(w.dir) * T * 1.1, by = w.y - Math.sin(w.dir) * T * 1.1;
+    const dx = bx - d.x, dy = by - d.y, dist = Math.hypot(dx, dy);
+    if (dist > 2) { d.x += dx * Math.min(1, dt * 3); d.y += dy * Math.min(1, dt * 3); d.dir = Math.atan2(dy, dx); }
+  }
+  // The child calls out the dogs as they pass, and the parent agrees.
+  const near = (a, b, r) => Math.hypot(a.x - b.x, a.y - b.y) < r * T;
+  if (near(kid, dogBig, 2.8) && sayOnce('kidBig', 9, kid, ['big'])) later(1.3, () => say(kidParent, ['big']));
+  if (near(kid, dogSmall, 2.8) && sayOnce('kidSmall', 9, kid, ['small'])) later(1.3, () => say(kidParent, ['small']));
+  // The dog walkers greet each other, and you.
+  if (near(walkerBig, walkerSmall, 2.2) && sayOnce('walkers', 12, walkerBig, ['hello'])) later(1, () => say(walkerSmall, ['hello']));
+  for (const w of [walkerBig, walkerSmall, kidParent]) {
+    if (S.introDone && !player.hidden && near(w, player, 2) && sayOnce('p' + w.id, 12, w, ['hello'])) faceTo(w, player);
+  }
+}
+
+// ===========================================================================
 // People who stay on the platform
 // ===========================================================================
 const worker = makeActor(8 * T, 24 * T, { body: '#4a4f5c', vest: '#f08a24', skin: SKIN[2], hair: '#1c1c1c', size: 9.5 }, { role: 'worker', pitch: 170 });
@@ -349,7 +451,7 @@ const parent = makeActor(3.85 * T, 18.6 * T, { body: '#6b5a8f', skin: SKIN[1], h
 const child = makeActor(3.85 * T, 17.5 * T, { body: '#e0b040', skin: SKIN[1], hair: '#2b211c', size: 6.5 }, { role: 'child', pitch: 340, dir: 0 });
 const guard = makeActor(8 * T, 11.0 * T, { body: '#30363f', skin: SKIN[3], hair: '#1c1c1c', hat: '#30363f', size: 9.5 }, { role: 'guard', pitch: 110 });
 guard.dir = Math.PI / 2;
-actors.push(worker, parent, child, guard);
+actors.push(worker, parent, child, guard, kid, kidParent, walkerBig, dogBig, walkerSmall, dogSmall);
 const RESIDENTS = [worker, parent, child];
 
 const greeted = new WeakSet();
@@ -420,7 +522,7 @@ window.addEventListener('keyup', (e) => { keys[e.key] = false; });
 // ===========================================================================
 const PR = 8;
 function blocked(x, y) {
-  if (x < 3 * T + PR || x > 13 * T - PR || y < T + PR || y > 35 * T - PR) return true;
+  if (x < PR || x > MAP_W * T - PR || y < TOP * T + PR || y > MAP_H * T - PR) return true;
   if (Math.hypot(x - guard.x, y - guard.y) < PR + 8) return true;
   for (const s of SOLIDS.concat(GATES.filter((g, i) => gates[i].open <= 0))) {
     const cx = Math.max(s.x * T, Math.min(x, (s.x + s.w) * T));
@@ -468,6 +570,41 @@ function introTick() {
 }
 
 // ===========================================================================
+// Leaving: step onto the small train and ride away.
+// ===========================================================================
+let riding = false;
+function rideTick() {
+  if (riding) {
+    if (tram.state === 'away' && $('#end').hidden) showEnd();
+    return;
+  }
+  if (tram.state !== 'stopped' || tram.open < 1 || tram.timer < 1.5) return;
+  const d = [0, 1].map(tramDoor).find((p) => Math.hypot(p.x - player.x, p.y - player.y) < 0.8 * T);
+  if (!d) return;
+  riding = true;
+  player.x = d.x; player.y = d.y - 0.6 * T;
+  player.hidden = true; player.moving = false;
+  tram.timer = Math.min(tram.timer, 3);
+}
+function showEnd() {
+  const end = $('#end');
+  end.hidden = false;
+  end.innerHTML = '<div class="endwords"></div>';
+  const box = end.querySelector('.endwords');
+  S.seen.forEach((w, i) => setTimeout(() => {
+    box.insertAdjacentHTML('beforeend', `<span class="endword">${glyphSVG(w)}</span>`);
+    voice({ pitch: 220 }, [w], 0.06);
+  }, 900 + i * 650));
+  S.rode = true; writeSave();
+  setTimeout(() => {
+    end.onclick = () => {
+      end.hidden = true; end.onclick = null; riding = false; player.hidden = false;
+      player.x = 8 * T; player.y = -9.6 * T;
+    };
+  }, 900 + S.seen.length * 650);
+}
+
+// ===========================================================================
 // Main loop
 // ===========================================================================
 let last = performance.now(), saveTimer = 0;
@@ -478,7 +615,10 @@ function frame(now) {
   for (let i = timers.length - 1; i >= 0; i--) if (timers[i].at <= clock) { const t = timers.splice(i, 1)[0]; t.fn(); }
 
   for (const tr of trains) updateTrain(tr, dt);
-  if (intro) introTick(); else movePlayer(dt);
+  updateTram(dt);
+  cityTick(dt);
+  if (!intro) rideTick();
+  if (intro) introTick(); else if (!riding) movePlayer(dt);
   for (const a of actors) {
     runTasks(a, dt);
     if (a.bubble && a.bubble.until < clock) a.bubble = null;
@@ -491,10 +631,10 @@ function frame(now) {
 
   // camera
   view.w = W; view.h = H; view.scale = viewScale(W);
-  const target = intro ? { x: 8 * T, y: trains[0].y + 10 * T } : player;
+  const target = intro ? { x: 8 * T, y: trains[0].y + 10 * T } : riding ? { x: tram.x + tram.len / 2, y: TRAM_Y + 2 * T } : player;
   const halfW = W / 2 / view.scale, halfH = H / 2 / view.scale;
   let tx = MAP_W * T > halfW * 2 ? Math.max(halfW, Math.min(MAP_W * T - halfW, target.x)) : MAP_W * T / 2;
-  let ty = Math.max(halfH - T, Math.min(MAP_H * T - halfH + T, target.y));
+  let ty = Math.max(TOP * T + halfH, Math.min(MAP_H * T - halfH + T, target.y));
   view.cx += (tx - view.cx) * Math.min(1, dt * 4);
   view.cy += (ty - view.cy) * Math.min(1, dt * 4);
 
@@ -508,7 +648,7 @@ function frame(now) {
 function liveState() {
   const people = intro ? actors : [player, ...actors];
   return {
-    t: clock, trains, actors: people, gatesOpen: gates.map((gt) => gt.open > 0),
+    t: clock, trains: trains.concat([tram]), actors: people, gatesOpen: gates.map((gt) => gt.open > 0),
     bubbles: people.filter((a) => a.bubble).map((a) => ({ actorId: a.id, g: a.bubble.g })),
   };
 }
